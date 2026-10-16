@@ -11,7 +11,7 @@ model_path = 'linear_medical_cost_predict.pkl'
 with open(model_path, 'rb') as f:
     model = pickle.load(f)
 
-# HTML Template with modern medical-themed embedded CSS styling and clean layout
+# HTML Template with fixed button layout and styling
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -47,6 +47,8 @@ HTML_TEMPLATE = """
             box-shadow: 0 10px 30px -5px rgba(14, 165, 233, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
             width: 100%;
             max-width: 600px;
+            position: relative;
+            z-index: 10;
         }
         .header {
             text-align: center;
@@ -71,6 +73,11 @@ HTML_TEMPLATE = """
         p.subtitle {
             color: var(--text-muted);
             font-size: 14px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
         .form-grid {
             display: grid;
@@ -106,8 +113,7 @@ HTML_TEMPLATE = """
             background-color: #fff;
             box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
         }
-        button {
-            grid-column: span 2;
+        button[type="submit"] {
             background-color: var(--primary);
             color: white;
             border: none;
@@ -117,12 +123,14 @@ HTML_TEMPLATE = """
             border-radius: 8px;
             cursor: pointer;
             transition: background-color 0.2s ease, transform 0.1s ease;
-            margin-top: 10px;
+            width: 100%;
+            margin-top: 5px;
+            pointer-events: auto;
         }
-        button:hover {
+        button[type="submit"]:hover {
             background-color: var(--primary-hover);
         }
-        button:active {
+        button[type="submit"]:active {
             transform: scale(0.98);
         }
         .result-card {
@@ -148,7 +156,7 @@ HTML_TEMPLATE = """
         }
         @media (max-width: 600px) {
             .form-grid { grid-template-columns: 1fr; }
-            .full-width, button { grid-column: span 1; }
+            .full-width { grid-column: span 1; }
             .container { padding: 25px 20px; }
         }
     </style>
@@ -157,7 +165,6 @@ HTML_TEMPLATE = """
     <div class="container">
         <div class="header">
             <div class="icon-box">
-                <!-- Medical Cross SVG Icon -->
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </div>
             <h2>Medical Cost Predictor</h2>
@@ -198,9 +205,9 @@ HTML_TEMPLATE = """
                         <option value="southwest">Southwest</option>
                     </select>
                 </div>
-                
-                <button type="submit">Predict Insurance Cost</button>
             </div>
+            
+            <button type="submit">Predict Insurance Cost</button>
         </form>
 
         {% if prediction is not none %}
@@ -219,23 +226,19 @@ def home():
     prediction = None
     if request.method == 'POST':
         try:
-            # Capture inputs from form
             age = float(request.form['age'])
             bmi = float(request.form['bmi'])
             children = float(request.form['children'])
             smoker = request.form['smoker']
             region = request.form['region']
 
-            # Map categorical fields to numeric values
             smoker_val = 1 if smoker == 'yes' else 0
             region_map = {'northeast': 0, 'northwest': 1, 'southeast': 2, 'southwest': 3}
             region_val = region_map.get(region, 0)
 
-            # Build DataFrame matching the exact features expected by your pickle model
             input_data = pd.DataFrame([[age, bmi, children, smoker_val, region_val]], 
                                       columns=['age', 'bmi', 'children', 'smoker', 'region'])
 
-            # Run prediction
             pred_cost = model.predict(input_data)[0]
             prediction = f"${pred_cost:,.2f}"
             
