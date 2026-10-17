@@ -21,6 +21,28 @@ FEATURES = ["age", "bmi", "children", "smoker", "region"]
 SMOKER_MAP = {"No": 0, "Yes": 1}
 REGION_MAP = {"Northeast": 0, "Northwest": 1, "Southeast": 2, "Southwest": 3}
 
+# The model was trained on USD charges, so predictions are converted to INR.
+# Update the rate any time, or set USD_TO_INR as an environment variable on Render.
+USD_TO_INR = float(os.environ.get("USD_TO_INR", 96.5))
+
+
+def inr(amount: float, decimals: int = 2) -> str:
+    """Format a number with Indian digit grouping, e.g. 2096450.5 -> 20,96,450.50"""
+    sign = "-" if amount < 0 else ""
+    amount = abs(round(amount, decimals))
+    whole, _, frac = f"{amount:.{decimals}f}".partition(".")
+    if len(whole) > 3:
+        head, tail = whole[:-3], whole[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        whole = ",".join(parts + [tail])
+    return sign + whole + ("." + frac if decimals else "")
+
+
 DEFAULTS = {"age": 35, "bmi": 26.5, "children": 1, "smoker": "No", "region": "Northeast"}
 
 
@@ -298,8 +320,8 @@ PAGE = """
     {% if result %}
       <section class="metric">
         <div class="label">Estimated annual medical cost</div>
-        <div class="amount"><sup>$</sup>{{ '{:,.2f}'.format(result.cost) }}</div>
-        <div class="per">≈ ${{ '{:,.0f}'.format(result.cost / 12) }} per month</div>
+        <div class="amount"><sup>₹</sup>{{ result.total }}</div>
+        <div class="per">≈ ₹{{ result.monthly }} per month</div>
         <div class="chips">
           <span class="chip">🎂 {{ v.age }} yrs</span>
           <span class="chip">⚖️ BMI {{ '%.1f' % v.bmi }}</span>
@@ -324,7 +346,7 @@ PAGE = """
         </div>
         <div class="card">
           <div class="k">Weekly average</div>
-          <div class="v">${{ '{:,.0f}'.format(result.cost / 52) }}</div>
+          <div class="v">₹{{ result.weekly }}</div>
           <div class="s" style="color: var(--muted)">per week</div>
         </div>
       </div>
@@ -343,7 +365,7 @@ PAGE = """
     {% endif %}
 
     <p class="disclaimer">
-      ⚕️ This is an educational estimate from a statistical model (values in USD) and not medical, financial or insurance advice.
+      ⚕️ This is an educational estimate from a statistical model (values in Indian Rupees, converted at ₹{{ rate }} per US$1) and not medical, financial or insurance advice.
     </p>
   </main>
 </div>
@@ -389,14 +411,18 @@ def index():
                 REGION_MAP[values["region"]],
             ]
             X = pd.DataFrame([row], columns=FEATURES)  # keeps feature names -> no sklearn warning
-            cost = max(0.0, float(model.predict(X)[0]))  # linear models can dip below 0 at extremes
+            cost_usd = max(0.0, float(model.predict(X)[0]))  # linear models can dip below 0 at extremes
+            cost = cost_usd * USD_TO_INR  # convert USD -> INR
 
             label, cls = bmi_category(values["bmi"])
-            result = Obj(cost=cost, bmi_label=label, bmi_cls=cls, vector=str([row]))
+            result = Obj(
+                total=inr(cost), monthly=inr(cost / 12, 0), weekly=inr(cost / 52, 0),
+                bmi_label=label, bmi_cls=cls, vector=str([row]),
+            )
         except (ValueError, TypeError) as e:
             error = str(e) or "Please check your inputs."
 
-    return render_template_string(PAGE, v=Obj(values), regions=list(REGION_MAP), result=result, error=error)
+    return render_template_string(PAGE, v=Obj(values), regions=list(REGION_MAP), result=result, error=error, rate=USD_TO_INR)
 
 
 @app.route("/health")
